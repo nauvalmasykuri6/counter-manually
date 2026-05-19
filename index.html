@@ -1,40 +1,334 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="id">
-    <head>
-        <meta charset="UTF-8" />
-        <meta
-            name="viewport"
-            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-        />
-        <meta name="theme-color" content="#121212" />
-        <title>Auto Box Counter - HD Download</title>
-        <link
-            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
-            rel="stylesheet"
-        />
-        <style>
-            body {
-                background-color: #121212;
-                color: #fff;
-                font-family: sans-serif;
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Auto Box Counter - Zoom & HD Download</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #121212; color: #fff; font-family: sans-serif; }
+        .canvas-container {
+            position: relative;
+            overflow: hidden; /* Mencegah scroll default browser saat gambar digeser */
+            background: #222;
+            border: 2px dashed #444;
+            border-radius: 8px;
+            max-width: 100%;
+            touch-action: none; /* Kunci gesture bawaan HP agar custom zoom JS berjalan lancar */
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+            max-width: 100%;
+            height: auto;
+            cursor: grab;
+        }
+        canvas:active { cursor: grabbing; }
+    </style>
+</head>
+<body>
+
+<div class="container py-3">
+    <div class="row justify-content-center">
+        <div class="col-md-8 text-center">
+            <h4 class="mb-3">📦 Box Counter Pro (Zoom + HD Download)</h4>
+            
+            <div class="mb-3">
+                <input class="form-control form-control-sm" type="file" id="imageLoader" accept="image/*">
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center bg-dark p-2 rounded mb-2 small">
+                <div>Total: <span id="counterDisplay" class="fw-bold text-warning fs-5">0</span> Box</div>
+                <div>
+                    <button id="btnUndo" class="btn btn-sm btn-outline-light py-1">↩️ Undo</button>
+                    <button id="btnClear" class="btn btn-sm btn-outline-danger py-1">🗑️ Reset</button>
+                </div>
+            </div>
+
+            <div class="canvas-container shadow mb-2">
+                <canvas id="imageCanvas"></canvas>
+            </div>
+
+            <div class="d-flex gap-2 justify-content-center mb-3">
+                <button id="btnZoomIn" class="btn btn-secondary btn-sm px-3">➕ Zoom In</button>
+                <button id="btnZoomOut" class="btn btn-secondary btn-sm px-3">➖ Zoom Out</button>
+                <button id="btnResetZoom" class="btn btn-outline-secondary btn-sm">🔄 Fit</button>
+            </div>
+            
+            <div class="d-grid mb-2">
+                <button id="btnDownload" class="btn btn-success py-2 fw-bold shadow" disabled>
+                    💾 Simpan Gambar Jernih (HD)
+                </button>
+            </div>
+            
+            <p class="text-muted text-start style small px-1" style="font-size: 0.75rem;">
+                ℹ️ <b>Navigasi HP:</b><br>
+                - Tap 1 jari pada karton untuk memberi nomor urut.<br>
+                - Seret dengan <b>2 jari sekaligus</b> untuk menggeser gambar saat posisi dizoom.
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const imageLoader = document.getElementById('imageLoader');
+    const canvas = document.getElementById('imageCanvas');
+    const ctx = canvas.getContext('2d');
+    const counterDisplay = document.getElementById('counterDisplay');
+    const btnUndo = document.getElementById('btnUndo');
+    const btnClear = document.getElementById('btnClear');
+    const btnDownload = document.getElementById('btnDownload');
+    
+    const btnZoomIn = document.getElementById('btnZoomIn');
+    const btnZoomOut = document.getElementById('btnZoomOut');
+    const btnResetZoom = document.getElementById('btnResetZoom');
+
+    let baseImage = new Image();
+    let dots = [];
+
+    // Variabel Transformasi (Zoom & Pan)
+    let scale = 1;
+    let panX = 0;
+    let panY = 0;
+    let isDragging = false;
+    let startX, startY;
+    
+    // Melacak jumlah sentuhan (untuk membedakan tap nomor vs geser 2 jari)
+    let touchCount = 0;
+
+    imageLoader.addEventListener('change', handleImage, false);
+
+    function handleImage(e) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            baseImage.onload = function() {
+                canvas.width = baseImage.width;
+                canvas.height = baseImage.height;
+                dots = []; 
+                resetZoom();
+                btnDownload.disabled = false;
             }
-            .canvas-container {
-                position: relative;
-                overflow: auto;
-                background: #222;
-                border: 2px dashed #444;
-                border-radius: 8px;
-                max-width: 100%;
-                margin-top: 15px;
+            baseImage.src = event.target.result;
+        }
+        if(e.target.files[0]) { reader.readAsDataURL(e.target.files[0]); }
+    }
+
+    function resetZoom() {
+        scale = 1;
+        panX = 0;
+        panY = 0;
+        redrawCanvas();
+    }
+
+    function redrawCanvas() {
+        if (!baseImage.src) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Kunci Fitur Zoom: Gunakan save & restore matriks canvas
+        ctx.save();
+        ctx.translate(panX, panY);
+        ctx.scale(scale, scale);
+
+        // Gambar Background
+        ctx.drawImage(baseImage, 0, 0);
+
+        // Gambar Titik Penomoran
+        dots.forEach((dot, index) => {
+            const number = index + 1;
+            const radius = Math.max(canvas.width * 0.015, 20); 
+
+            ctx.beginPath();
+            ctx.arc(dot.x, dot.y, radius, 0, 2 * Math.PI, false);
+            ctx.fillStyle = 'rgba(220, 53, 69, 0.85)';
+            ctx.fill();
+            
+            ctx.lineWidth = Math.max(canvas.width * 0.002, 3);
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `bold ${radius * 0.9}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(number, dot.x, dot.y);
+        });
+
+        ctx.restore();
+        counterDisplay.innerText = dots.length;
+    }
+
+    // --- LOGIKA MOUSE & TOUCH EVENT (ZOOM / PAN / CLICK) ---
+
+    function getCanvasCoords(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        // Faktor skala penyesuaian layar CSS ke resolusi render Canvas asli
+        const cssX = (clientX - rect.left) * (canvas.width / rect.width);
+        const cssY = (clientY - rect.top) * (canvas.height / rect.height);
+        
+        // Membalikkan perhitungan matriks (Transformasi Balik) agar koordinat klik akurat saat dizoom
+        const x = (cssX - panX) / scale;
+        const y = (cssY - panY) / scale;
+        return { x, y };
+    }
+
+    // Handler Mulai Sentuh/Klik
+    function startDrag(clientX, clientY) {
+        isDragging = true;
+        startX = clientX - panX;
+        startY = clientY - panY;
+    }
+
+    // Handler Bergeser
+    function doDrag(clientX, clientY) {
+        if (!isDragging) return;
+        panX = clientX - startX;
+        panY = clientY - startY;
+        redrawCanvas();
+    }
+
+    // Desktop Events
+    canvas.addEventListener('mousedown', function(e) {
+        if (e.button === 0) { // Klik kiri
+            // Jika tidak dizoom, langsung hitung. Jika dizoom, siap-siap geser jika mouse diseret.
+            startX = e.clientX - panX;
+            startY = e.clientY - panY;
+            isDragging = true;
+        }
+    });
+
+    canvas.addEventListener('mousemove', function(e) {
+        if (isDragging && scale > 1) {
+            doDrag(e.clientX, e.clientY);
+        }
+    });
+
+    canvas.addEventListener('mouseup', function(e) {
+        if (isDragging) {
+            isDragging = false;
+            // Jika perpindahan mouse sangat kecil (tidak berniat menggeser), dianggap sebagai ketukan/klik nomor
+            const movedX = Math.abs((e.clientX - panX) - startX);
+            const movedY = Math.abs((e.clientY - panY) - startY);
+            if (movedX < 5 && movedY < 5) {
+                const coords = getCanvasCoords(e.clientX, e.clientY);
+                dots.push(coords);
+                redrawCanvas();
             }
-            canvas {
-                display: block;
-                margin: 0 auto;
-                max-width: 100%;
-                height: auto;
-                cursor: crosshair;
+        }
+    });
+
+    // Mobile Layar Sentuh Events (Mendukung Multi-touch)
+    canvas.addEventListener('touchstart', function(e) {
+        e.preventDefault();
+        touchCount = e.touches.length;
+        
+        if (touchCount === 1) {
+            // Persiapan jika hanya tap nomor tunggal
+            const touch = e.touches[0];
+            startX = touch.clientX - panX;
+            startY = touch.clientY - panY;
+            isDragging = true;
+        } else if (touchCount >= 2) {
+            // Menggunakan 2 jari khusus untuk menggeser gambar (Pan)
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            // Ambil titik tengah antar dua jari
+            const midX = (touch1.clientX + touch2.clientX) / 2;
+            const py = (touch1.clientY + touch2.clientY) / 2;
+            startDrag(midX, py);
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', function(e) {
+        e.preventDefault();
+        if (!isDragging) return;
+
+        if (e.touches.length === 1 && scale === 1) {
+            // Jika scale normal (1), cegah geser agar tidak membingungkan pengguna saat mengetuk nomor
+            return;
+        }
+
+        if (e.touches.length >= 2) {
+            // Drag dengan dua jari
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            const midX = (touch1.clientX + touch2.clientX) / 2;
+            const midY = (touch1.clientY + touch2.clientY) / 2;
+            doDrag(midX, midY);
+        } else if (e.touches.length === 1) {
+            // Drag dengan satu jari jika kondisi sudah dizoom
+            const touch = e.touches[0];
+            doDrag(touch.clientX, touch.clientY);
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', function(e) {
+        if (isDragging) {
+            isDragging = false;
+            if (touchCount === 1) {
+                // Konfirmasi apakah ini murni TAP memberi nomor
+                const touch = e.changedTouches[0];
+                const movedX = Math.abs((touch.clientX - panX) - startX);
+                const movedY = Math.abs((touch.clientY - panY) - startY);
+                if (movedX < 10 && movedY < 10) {
+                    const coords = getCanvasCoords(touch.clientX, touch.clientY);
+                    dots.push(coords);
+                    redrawCanvas();
+                }
             }
-        </style>
+        }
+        touchCount = 0;
+    });
+
+    // --- TOMBOL KONTROL ZOOM ---
+    btnZoomIn.addEventListener('click', function() {
+        scale *= 1.3;
+        redrawCanvas();
+    });
+
+    btnZoomOut.addEventListener('click', function() {
+        scale /= 1.3;
+        if (scale < 1) scale = 1; // Batasi maksimal zoom out agar tidak lebih kecil dari aslinya
+        redrawCanvas();
+    });
+
+    btnResetZoom.addEventListener('click', resetZoom);
+
+    // --- TOMBOL DOWNLOAD (TETAP JERNIH KARENA MENGGUNAKAN MATRIKS CANVAS ASLI) ---
+    btnDownload.addEventListener('click', function() {
+        if (!baseImage.src) return;
+
+        // Reset zoom sementara khusus untuk render download agar letak nomor kembali pas di gambar mentah asli
+        const currentScale = scale;
+        const currentPanX = panX;
+        const currentPanY = panY;
+
+        scale = 1; panX = 0; panY = 0;
+        redrawCanvas();
+
+        const imageResult = canvas.toDataURL("image/jpeg", 1.0);
+        const filename = `mr_count_${dots.length}_box_hd.jpg`;
+
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = imageResult;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        // Kembalikan ke kondisi zoom user sebelumnya setelah download selesai
+        scale = currentScale; panX = currentPanX; panY = currentPanY;
+        redrawCanvas();
+    });
+
+    btnUndo.addEventListener('click', function() { dots.pop(); redrawCanvas(); });
+    btnClear.addEventListener('click', function() { if(confirm("Hapus semua nomor?")) { dots = []; resetZoom(); } });
+});
+</script>
+
+</body>
+</html>        </style>
     </head>
     <body>
         <div class="container py-4">
