@@ -6,7 +6,7 @@
             name="viewport"
             content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
         />
-        <title>Auto Box Counter - HD Download</title>
+        <title>Auto Box Counter - Multi Item HD</title>
         <link
             href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
             rel="stylesheet"
@@ -33,16 +33,22 @@
                 height: auto;
                 cursor: crosshair;
             }
+            .item-badge {
+                font-size: 0.9rem;
+                padding: 4px 8px;
+                border-radius: 4px;
+                margin-right: 5px;
+                display: inline-block;
+            }
         </style>
     </head>
     <body>
         <div class="container py-4">
             <div class="row justify-content-center">
-                <div class="col-md-8 text-center">
-
+                <div class="col-md-9 text-center">
                     <div class="mb-3">
                         <label for="imageLoader" class="form-label text-light"
-                            >Pilih File:</label
+                            >Pilih File Foto:</label
                         >
                         <input
                             class="form-control"
@@ -52,32 +58,81 @@
                         />
                     </div>
 
-                    <div
-                        class="d-flex justify-content-between align-items-center bg-dark p-3 rounded mb-2"
-                    >
-                        <div>
-                            Total:
-                            <span
-                                id="counterDisplay"
-                                class="fw-bold text-warning fs-4"
-                                >0</span
-                            >
-                            Box
+                    <div class="bg-dark p-3 rounded mb-3 text-start">
+                        <h6 class="text-warning mb-2">
+                            📋 Manajemen Item / Kategori:
+                        </h6>
+                        <div class="row g-2 align-items-center">
+                            <div class="col-6 col-sm-4">
+                                <input
+                                    type="text"
+                                    id="newItemName"
+                                    class="form-control form-control-sm"
+                                    placeholder="Nama Item (cth: Item B)"
+                                    value="Item 1"
+                                />
+                            </div>
+                            <div class="col-3 col-sm-2">
+                                <input
+                                    type="color"
+                                    id="newItemColor"
+                                    class="form-control form-control-sm form-control-color w-100"
+                                    value="#000000"
+                                    title="Pilih Warna Lingkaran"
+                                />
+                            </div>
+                            <div class="col-3 col-sm-3">
+                                <button
+                                    id="btnAddItem"
+                                    class="btn btn-sm btn-primary w-100"
+                                >
+                                    ➕ Tambah Item
+                                </button>
+                            </div>
                         </div>
-                        <div>
-                            <button
-                                id="btnUndo"
-                                class="btn btn-sm btn-outline-light me-1"
+
+                        <div class="mt-3">
+                            <label class="small text-muted d-block mb-1"
+                                >Pilih Item Aktif saat ini:</label
                             >
-                                ↩️ Undo
-                            </button>
-                            <button
-                                id="btnClear"
-                                class="btn btn-sm btn-outline-danger"
-                            >
-                                🗑️ Reset
-                            </button>
+                            <div
+                                id="itemSelectorContainer"
+                                class="d-flex flex-wrap gap-2"
+                            ></div>
                         </div>
+                    </div>
+
+                    <div class="bg-dark p-3 rounded mb-2 text-start">
+                        <div
+                            class="d-flex justify-content-between align-items-center mb-2"
+                        >
+                            <div class="fw-bold fs-5">
+                                Total Gabungan:
+                                <span
+                                    id="grandTotalDisplay"
+                                    class="text-warning"
+                                    >0</span
+                                >
+                            </div>
+                            <div>
+                                <button
+                                    id="btnUndo"
+                                    class="btn btn-sm btn-outline-light me-1"
+                                >
+                                    ↩️ Undo
+                                </button>
+                                <button
+                                    id="btnClear"
+                                    class="btn btn-sm btn-outline-danger"
+                                >
+                                    🗑️ Reset Semua
+                                </button>
+                            </div>
+                        </div>
+                        <div
+                            id="breakdownDisplay"
+                            class="small text-muted"
+                        ></div>
                     </div>
 
                     <div class="canvas-container shadow">
@@ -95,8 +150,9 @@
                     </div>
 
                     <p class="text-muted small mt-2">
-                        💡 *Tips: Klik/sentuh karton untuk memberi nomor urut,
-                        lalu klik tombol hijau untuk menyimpan ke galeri.*
+                        💡 *Tips: Tambahkan item baru dengan warna berbeda untuk
+                        membedakan jenis kardus. Klik pada foto untuk memberi
+                        nomor.*
                     </p>
                 </div>
             </div>
@@ -107,28 +163,89 @@
                 const imageLoader = document.getElementById("imageLoader");
                 const canvas = document.getElementById("imageCanvas");
                 const ctx = canvas.getContext("2d");
-                const counterDisplay =
-                    document.getElementById("counterDisplay");
                 const btnUndo = document.getElementById("btnUndo");
                 const btnClear = document.getElementById("btnClear");
                 const btnDownload = document.getElementById("btnDownload");
 
-                let baseImage = new Image();
-                let dots = [];
+                // Elemen Baru
+                const newItemName = document.getElementById("newItemName");
+                const newItemColor = document.getElementById("newItemColor");
+                const btnAddItem = document.getElementById("btnAddItem");
+                const itemSelectorContainer = document.getElementById(
+                    "itemSelectorContainer"
+                );
+                const grandTotalDisplay =
+                    document.getElementById("grandTotalDisplay");
+                const breakdownDisplay =
+                    document.getElementById("breakdownDisplay");
 
-                // 1. Handle Upload Gambar
+                let baseImage = new Image();
+
+                // Struktur data baru untuk menampung banyak item
+                let categories = [
+                    { id: "cat_1", name: "Item 1", color: "#000000", dots: [] } // Default item pertama (Hitam)
+                ];
+                let activeCategoryId = "cat_1";
+
+                // 1. Inisialisasi Pilihan Kategori di UI
+                function renderItemSelectors() {
+                    itemSelectorContainer.innerHTML = "";
+                    categories.forEach(cat => {
+                        const button = document.createElement("button");
+                        button.type = "button";
+                        // Cek jika ini kategori aktif
+                        const isActive = cat.id === activeCategoryId;
+                        button.className = `btn btn-sm ${
+                            isActive
+                                ? "btn-light fw-bold"
+                                : "btn-outline-secondary text-light"
+                        }`;
+                        button.style.borderLeft = `5px solid ${cat.color}`;
+
+                        button.innerHTML = `${cat.name} (${cat.dots.length})`;
+                        button.addEventListener("click", () => {
+                            activeCategoryId = cat.id;
+                            renderItemSelectors();
+                        });
+                        itemSelectorContainer.appendChild(button);
+                    });
+                }
+
+                // 2. Tambah Kategori Baru
+                btnAddItem.addEventListener("click", function () {
+                    const name = newItemName.value.trim();
+                    const color = newItemColor.value;
+                    if (!name) return alert("Nama item tidak boleh kosong!");
+
+                    const id = "cat_" + Date.now();
+                    categories.push({
+                        id: id,
+                        name: name,
+                        color: color,
+                        dots: []
+                    });
+                    activeCategoryId = id; // Otomatis pindah ke item baru
+
+                    // Reset input nama untuk item berikutnya
+                    newItemName.value = `Item ${categories.length + 1}`;
+
+                    renderItemSelectors();
+                    updateCounterDisplay();
+                });
+
+                // 3. Handle Upload Gambar
                 imageLoader.addEventListener("change", handleImage, false);
 
                 function handleImage(e) {
                     const reader = new FileReader();
                     reader.onload = function (event) {
                         baseImage.onload = function () {
-                            // KUNCI KEJERNIHAN: Canvas diset memakai ukuran asli foto (Pixel Sempurna)
                             canvas.width = baseImage.width;
                             canvas.height = baseImage.height;
-                            dots = [];
+                            // Reset semua dots di setiap kategori saat ganti gambar
+                            categories.forEach(cat => (cat.dots = []));
                             redrawCanvas();
-                            btnDownload.disabled = false; // Aktifkan tombol download
+                            btnDownload.disabled = false;
                         };
                         baseImage.src = event.target.result;
                     };
@@ -137,55 +254,102 @@
                     }
                 }
 
-                // 2. Gambar Ulang Canvas
+                // 4. Hitung & Tampilkan Total Keseluruhan
+                function updateCounterDisplay() {
+                    let grandTotal = 0;
+                    let breakdownText = "";
+
+                    categories.forEach(cat => {
+                        grandTotal += cat.dots.length;
+                        breakdownText += `<span class="item-badge" style="background-color: ${
+                            cat.color
+                        }; color: ${getContrastYIQ(cat.color)}">${cat.name}: ${
+                            cat.dots.length
+                        }</span> `;
+                    });
+
+                    grandTotalDisplay.innerText = grandTotal;
+                    breakdownDisplay.innerHTML = breakdownText;
+                }
+
+                // Fungsi pembantu agar text di dalam badge otomatis putih/hitam tergantung kegelapan warna background
+                function getContrastYIQ(hexcolor) {
+                    hexcolor = hexcolor.replace("#", "");
+                    var r = parseInt(hexcolor.substr(0, 2), 16);
+                    var g = parseInt(hexcolor.substr(2, 2), 16);
+                    var b = parseInt(hexcolor.substr(4, 2), 16);
+                    var yiq = (r * 299 + g * 587 + b * 114) / 1000;
+                    return yiq >= 128 ? "black" : "white";
+                }
+
+                // 5. Gambar Ulang Canvas (Melompati semua kategori)
                 function redrawCanvas() {
                     if (!baseImage.src) return;
 
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                     ctx.drawImage(baseImage, 0, 0);
 
-                    dots.forEach((dot, index) => {
-                        const number = index + 1;
+                    // Looping setiap kategori untuk menggambar titiknya
+                    categories.forEach(cat => {
+                        cat.dots.forEach((dot, index) => {
+                            const number = index + 1; // Penomoran diulang dari 1 untuk setiap jenis item
+                            const radius = Math.max(canvas.width * 0.015, 20);
 
-                        // Ukuran lingkaran dibuat proporsional dengan resolusi gambar asli agar seimbang
-                        const radius = Math.max(canvas.width * 0.015, 20);
+                            // Lingkaran Custom Warna
+                            ctx.beginPath();
+                            ctx.arc(
+                                dot.x,
+                                dot.y,
+                                radius,
+                                0,
+                                2 * Math.PI,
+                                false
+                            );
+                            ctx.fillStyle = cat.color;
+                            ctx.fill();
 
-                        // Lingkaran Merah Transparan
-                        ctx.beginPath();
-                        ctx.arc(dot.x, dot.y, radius, 0, 2 * Math.PI, false);
-                        ctx.fillStyle = "black";
-                        ctx.fill();
+                            // Garis Tepi (Otomatis kontras dengan warna lingkaran)
+                            ctx.lineWidth = Math.max(canvas.width * 0.002, 3);
+                            ctx.strokeStyle =
+                                getContrastYIQ(cat.color) === "black"
+                                    ? "#000000"
+                                    : "#ffffff";
+                            ctx.stroke();
 
-                        // Garis Tepi Putih
-                        ctx.lineWidth = Math.max(canvas.width * 0.002, 3);
-                        ctx.strokeStyle = "#ffffff";
-                        ctx.stroke();
-
-                        // Angka Urut di tengah
-                        ctx.fillStyle = "#ffffff";
-                        ctx.font = `bold ${radius * 0.9}px sans-serif`;
-                        ctx.textAlign = "center";
-                        ctx.textBaseline = "middle";
-                        ctx.fillText(number, dot.x, dot.y);
+                            // Angka Urut di tengah
+                            ctx.fillStyle =
+                                getContrastYIQ(cat.color) === "black"
+                                    ? "#000000"
+                                    : "#ffffff";
+                            ctx.font = `bold ${radius * 0.9}px sans-serif`;
+                            ctx.textAlign = "center";
+                            ctx.textBaseline = "middle";
+                            ctx.fillText(number, dot.x, dot.y);
+                        });
                     });
 
-                    counterDisplay.innerText = dots.length;
+                    renderItemSelectors();
+                    updateCounterDisplay();
                 }
 
-                // 3. Deteksi Titik Sentuh / Klik
+                // 6. Deteksi Titik Sentuh ke Item Aktif
                 function handleDrawEvent(clientX, clientY) {
                     if (!baseImage.src) return;
 
                     const rect = canvas.getBoundingClientRect();
-
-                    // Konversi koordinat layar HP (kecil) ke resolusi gambar asli (besar)
                     const x =
                         (clientX - rect.left) * (canvas.width / rect.width);
                     const y =
                         (clientY - rect.top) * (canvas.height / rect.height);
 
-                    dots.push({ x: x, y: y });
-                    redrawCanvas();
+                    // Masukkan titik ke kategori yang sedang aktif saat ini
+                    const activeCat = categories.find(
+                        cat => cat.id === activeCategoryId
+                    );
+                    if (activeCat) {
+                        activeCat.dots.push({ x: x, y: y });
+                        redrawCanvas();
+                    }
                 }
 
                 canvas.addEventListener("mousedown", function (e) {
@@ -202,30 +366,46 @@
                     { passive: false }
                 );
 
-                // 4. Tombol Undo & Reset
+                // 7. Tombol Undo (Hanya menghapus titik terakhir di item aktif)
                 btnUndo.addEventListener("click", function () {
-                    dots.pop();
-                    redrawCanvas();
-                });
-
-                btnClear.addEventListener("click", function () {
-                    if (confirm("Hapus semua nomor?")) {
-                        dots = [];
+                    const activeCat = categories.find(
+                        cat => cat.id === activeCategoryId
+                    );
+                    if (activeCat) {
+                        activeCat.dots.pop();
                         redrawCanvas();
                     }
                 });
 
-                // 5. FITUR DOWNLOAD HD (Sistem mengambil data mentah Canvas Asli)
+                // 8. Reset Semua
+                btnClear.addEventListener("click", function () {
+                    if (confirm("Hapus semua nomor dan semua kategori?")) {
+                        categories = [
+                            {
+                                id: "cat_1",
+                                name: "Item 1",
+                                color: "#000000",
+                                dots: []
+                            }
+                        ];
+                        activeCategoryId = "cat_1";
+                        newItemName.value = "Item 1";
+                        redrawCanvas();
+                    }
+                });
+
+                // 9. FITUR DOWNLOAD HD
                 btnDownload.addEventListener("click", function () {
                     if (!baseImage.src) return;
 
-                    // Ambil data format gambar dari canvas resolusi penuh
-                    const imageResult = canvas.toDataURL("image/jpeg", 1.0); // 1.0 artinya kualitas maksimal tanpa kompresi
+                    const imageResult = canvas.toDataURL("image/jpeg", 1.0);
 
-                    // Dapatkan nama file otomatis berdasarkan jumlah box
-                    const filename = `mr_count_${dots.length}_box.jpg`;
+                    // Menghitung total seluruh box untuk nama file
+                    let totalBox = 0;
+                    categories.forEach(cat => (totalBox += cat.dots.length));
 
-                    // Proses trigger download otomatis di HP/Browser
+                    const filename = `mr_count_total_${totalBox}_box.jpg`;
+
                     const link = document.createElement("a");
                     link.download = filename;
                     link.href = imageResult;
@@ -233,6 +413,9 @@
                     link.click();
                     document.body.removeChild(link);
                 });
+
+                // Render tombol pertama kali saat web dibuka
+                renderItemSelectors();
             });
         </script>
     </body>
